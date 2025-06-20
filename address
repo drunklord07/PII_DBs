@@ -1,3 +1,4 @@
+SET SERVEROUTPUT ON SIZE UNLIMITED
 DECLARE
     TYPE t_failed_table IS RECORD (
         owner       VARCHAR2(128),
@@ -64,12 +65,12 @@ BEGIN
 
                     WHILE DBMS_SQL.FETCH_ROWS(v_cur) > 0 LOOP
                         DBMS_SQL.COLUMN_VALUE(v_cur, 1, v_value);
-                        DBMS_OUTPUT.PUT_LINE(v_owner || ',' || v_table || ',found,' || v_column || ',' || v_value);
+                        -- Output the full value as-is
+                        DBMS_OUTPUT.PUT_LINE(v_owner || ',' || v_table || ',found,' || v_column || ',' || SUBSTR(v_value, 1, 4000));
                         v_match_found := TRUE;
-                        DBMS_SQL.CLOSE_CURSOR(v_cur);
-                        EXIT; -- Stop checking this column after first match
                     END LOOP;
 
+                    DBMS_SQL.CLOSE_CURSOR(v_cur);
                 EXCEPTION
                     WHEN OTHERS THEN
                         IF DBMS_SQL.IS_OPEN(v_cur) THEN
