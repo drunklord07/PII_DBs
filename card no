@@ -1,0 +1,117 @@
+DECLARE
+    TYPE t_failed_table IS RECORD (
+        owner       VARCHAR2(128),
+        table_name  VARCHAR2(128)
+    );
+    TYPE t_failed_list IS TABLE OF t_failed_table INDEX BY PLS_INTEGER;
+    v_failed_tables      t_failed_list;
+
+    v_sql               VARCHAR2(1000);
+    v_value             VARCHAR2(4000);
+    v_cur               INTEGER;
+    v_status            INTEGER;
+    v_owner             ALL_TAB_COLUMNS.OWNER%TYPE;
+    v_table             ALL_TAB_COLUMNS.TABLE_NAME%TYPE;
+    v_column            ALL_TAB_COLUMNS.COLUMN_NAME%TYPE;
+
+    v_total_tables          INTEGER := 0;
+    v_successful_checks     INTEGER := 0;
+    v_failed_checks         INTEGER := 0;
+    v_tables_with_match     INTEGER := 0;
+    v_tables_without_match  INTEGER := 0;
+    v_match_found           BOOLEAN;
+    v_table_failed          BOOLEAN;
+    v_failed_idx            INTEGER := 0;
+
+BEGIN
+    FOR t IN (
+        SELECT DISTINCT OWNER, TABLE_NAME
+        FROM ALL_TABLES
+        WHERE OWNER NOT IN (
+            'SYS', 'SYSTEM', 'XDB', 'ORDSYS', 'CTXSYS', 'DBSNMP', 'OUTLN',
+            'ORDDATA', 'ORDPLUGINS', 'SI_INFORMTN_SCHEMA', 'MDSYS', 'OLAPSYS',
+            'WMSYS', 'EXFSYS', 'SYSMAN', 'FLOWS_FILES', 'APEX_PUBLIC_USER',
+            'ANONYMOUS', 'DVSYS', 'GSMADMIN_INTERNAL', 'LBACSYS'
+        )
+    ) LOOP
+        v_owner := t.OWNER;
+        v_table := t.TABLE_NAME;
+        v_total_tables := v_total_tables + 1;
+        v_table_failed := FALSE;
+        v_match_found := FALSE;
+
+        BEGIN
+            FOR c IN (
+                SELECT COLUMN_NAME
+                FROM ALL_TAB_COLUMNS
+                WHERE OWNER = v_owner AND TABLE_NAME = v_table
+            ) LOOP
+                v_column := c.COLUMN_NAME;
+
+                BEGIN
+                    v_sql := 'SELECT TO_CHAR("' || v_column || '") FROM "' || v_owner || '"."' || v_table || '" WHERE ROWNUM <= 5';
+
+                    v_cur := DBMS_SQL.OPEN_CURSOR;
+                    DBMS_SQL.PARSE(v_cur, v_sql, DBMS_SQL.NATIVE);
+                    DBMS_SQL.DEFINE_COLUMN(v_cur, 1, v_value, 4000);
+                    v_status := DBMS_SQL.EXECUTE(v_cur);
+
+                    WHILE DBMS_SQL.FETCH_ROWS(v_cur) > 0 LOOP
+                        DBMS_SQL.COLUMN_VALUE(v_cur, 1, v_value);
+
+                        -- Replace with DL regex
+                        IF REGEXP_LIKE(v_value, '^([4][0-9]{12}([0-9]{3})?|5[1-5][0-9]{14}|2(2[2-9][0-9]{12}|[3-6][0-9]{13}|7([01][0-9]{12}|20[0-9]{12}))|3[47][0-9]{13}|60[0-9]{14}|65[0-9]{14}|81[0-9]{14}|508[0-9][0-9]{12})$') THEN
+                            IF NOT (v_value LIKE '0%' OR v_value LIKE '1%' OR v_value LIKE '91%') THEN
+                                DBMS_OUTPUT.PUT_LINE(v_owner || ',' || v_table || ',found,' || v_column || ',' || v_value);
+                                v_match_found := TRUE;
+                            END IF;
+                        END IF;
+                    END LOOP;
+
+                    DBMS_SQL.CLOSE_CURSOR(v_cur);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        IF DBMS_SQL.IS_OPEN(v_cur) THEN
+                            DBMS_SQL.CLOSE_CURSOR(v_cur);
+                        END IF;
+                        v_table_failed := TRUE;
+                        EXIT;
+                END;
+            END LOOP;
+
+            IF v_table_failed THEN
+                DBMS_OUTPUT.PUT_LINE(v_owner || ',' || v_table || ',requires manual');
+                v_failed_checks := v_failed_checks + 1;
+                v_failed_idx := v_failed_idx + 1;
+                v_failed_tables(v_failed_idx).owner := v_owner;
+                v_failed_tables(v_failed_idx).table_name := v_table;
+            ELSIF v_match_found THEN
+                v_successful_checks := v_successful_checks + 1;
+                v_tables_with_match := v_tables_with_match + 1;
+            ELSE
+                DBMS_OUTPUT.PUT_LINE(v_owner || ',' || v_table || ',not found');
+                v_successful_checks := v_successful_checks + 1;
+                v_tables_without_match := v_tables_without_match + 1;
+            END IF;
+
+        EXCEPTION
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE(v_owner || ',' || v_table || ',requires manual');
+                v_failed_checks := v_failed_checks + 1;
+                v_failed_idx := v_failed_idx + 1;
+                v_failed_tables(v_failed_idx).owner := v_owner;
+                v_failed_tables(v_failed_idx).table_name := v_table;
+        END;
+    END LOOP;
+
+    -- Final summary
+    DBMS_OUTPUT.PUT_LINE('========================================');
+    DBMS_OUTPUT.PUT_LINE('Total Tables Found,' || v_total_tables);
+    DBMS_OUTPUT.PUT_LINE('Successfully Checked,' || v_successful_checks);
+    DBMS_OUTPUT.PUT_LINE('Tables with Matches,' || v_tables_with_match);
+    DBMS_OUTPUT.PUT_LINE('Tables with No Matches,' || v_tables_without_match);
+    DBMS_OUTPUT.PUT_LINE('Failed Checks (manual),' || v_failed_checks);
+    DBMS_OUTPUT.PUT_LINE('========================================');
+
+END;
+/
