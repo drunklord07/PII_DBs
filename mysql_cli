@@ -1,0 +1,112 @@
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS find_phone_numbers_in_db$$
+
+CREATE PROCEDURE find_phone_numbers_in_db()
+BEGIN
+    DECLARE done INT DEFAULT 0;
+    DECLARE tbl VARCHAR(255);
+    DECLARE col VARCHAR(255);
+    DECLARE error_flag BOOLEAN DEFAULT FALSE;
+
+    
+    DECLARE v_total_tables INT DEFAULT 0;
+    DECLARE v_successful_checks INT DEFAULT 0;
+    DECLARE v_tables_with_match INT DEFAULT 0;
+    DECLARE v_tables_without_match INT DEFAULT 0;
+    DECLARE v_failed_checks INT DEFAULT 0;
+
+   
+    DECLARE cur CURSOR FOR
+        SELECT TABLE_NAME, COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND DATA_TYPE IN ('char', 'varchar', 'text', 'longtext');
+
+    
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+
+    
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        IF error_flag THEN
+            SELECT 'An unexpected error occurred during execution.' AS ErrorMessage;
+        END IF;
+        ROLLBACK;
+    END;
+
+    
+    CREATE TEMPORARY TABLE IF NOT EXISTS phone_matches (
+        table_name VARCHAR(255),
+        column_name VARCHAR(255),
+        phone_number VARCHAR(20)
+    );
+
+    TRUNCATE TABLE phone_matches;
+
+    OPEN cur;
+
+    read_loop: LOOP
+        FETCH cur INTO tbl, col;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+
+       
+        IF NOT EXISTS (SELECT 1 FROM phone_matches WHERE table_name = tbl) THEN
+            SET v_total_tables = v_total_tables + 1;
+        END IF;
+
+        
+        SET @sql = NULL;
+       SET @sql = CONCAT(
+    'INSERT INTO phone_matches(table_name, column_name, phone_number) ',
+    'SELECT ''', tbl, ''', ''', col, ''', REGEXP_SUBSTR(`', col, '`, ''(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}'') AS phone ',
+    'FROM `', tbl, '` ',
+    'WHERE `', col, '` REGEXP ''(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}'' ',
+    'LIMIT 5;'
+);
+
+
+        IF @sql IS NOT NULL THEN
+            BEGIN
+                DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+                BEGIN
+                    SELECT CONCAT('Failed to execute query on table: ', tbl, ', column: ', col) AS ErrorMessage;
+                    SET error_flag = TRUE;
+                    SET v_failed_checks = v_failed_checks + 1;
+                END;
+
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+
+                
+                IF ROW_COUNT() > 0 THEN
+                    SET v_tables_with_match = v_tables_with_match + 1;
+                ELSE
+                    SET v_tables_without_match = v_tables_without_match + 1;
+                END IF;
+
+                SET v_successful_checks = v_successful_checks + 1;
+            END;
+        END IF;
+    END LOOP;
+
+    CLOSE cur;
+
+   
+    SELECT * FROM phone_matches ORDER BY table_name, column_name;
+
+   
+    SELECT '========================================' AS SummaryLine;
+    SELECT CONCAT('Total Tables Found: ', v_total_tables) AS SummaryLine;
+    SELECT CONCAT('Successfully Checked: ', v_successful_checks) AS SummaryLine;
+    SELECT CONCAT('Tables with Matches: ', v_tables_with_match) AS SummaryLine;
+    SELECT CONCAT('Tables with No Matches: ', v_tables_without_match) AS SummaryLine;
+    SELECT CONCAT('Failed Checks (manual): ', v_failed_checks) AS SummaryLine;
+    SELECT '========================================' AS SummaryLine;
+
+END$$
+
+DELIMITER ;
