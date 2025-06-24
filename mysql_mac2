@@ -10,7 +10,6 @@ BEGIN
     DECLARE v_total_tables INT DEFAULT 0;
     DECLARE v_successful_checks INT DEFAULT 0;
     DECLARE v_tables_with_match INT DEFAULT 0;
-    DECLARE v_tables_without_match INT DEFAULT 0;
     DECLARE v_failed_checks INT DEFAULT 0;
 
     DECLARE cur CURSOR FOR
@@ -32,11 +31,11 @@ BEGIN
         SET v_total_tables = v_total_tables + 1;
 
         SET sql_text = CONCAT(
-            'SELECT ''', tbl, ''' AS table_name, ''',
-                         col, ''' AS column_name, ',
-                         'REGEXP_SUBSTR(`', col, '`, ''(^|[^0-9])(\+91\-?|91|0)?[6-9][0-9]{9}'') AS phone_number ',
+            'SELECT ''', tbl, ''' AS table_name, ',
+                   '''', col, ''' AS column_name, ',
+                   'REGEXP_SUBSTR(`', col, '`, ''(^|[^0-9])(\\+91[- ]?|91|0)?[6-9][0-9]{9}'') AS phone_number ',
             'FROM `', tbl, '` ',
-            'WHERE `', col, '` REGEXP ''(^|[^0-9])(\+91\-?|91|0)?[6-9][0-9]{9}'' ',
+            'WHERE `', col, '` REGEXP ''(^|[^0-9])(\\+91[- ]?|91|0)?[6-9][0-9]{9}'' ',
             'LIMIT 5'
         );
 
@@ -46,12 +45,17 @@ BEGIN
                 SET v_failed_checks = v_failed_checks + 1;
             END;
 
-            PREPARE stmt FROM sql_text;
-            EXECUTE stmt;
-            DEALLOCATE PREPARE stmt;
+            -- Validate that statement is not null
+            IF sql_text IS NOT NULL THEN
+                PREPARE stmt FROM sql_text;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
 
-            SET v_successful_checks = v_successful_checks + 1;
-            SET v_tables_with_match = v_tables_with_match + 1;
+                SET v_successful_checks = v_successful_checks + 1;
+                SET v_tables_with_match = v_tables_with_match + 1;
+            ELSE
+                SET v_failed_checks = v_failed_checks + 1;
+            END IF;
         END;
     END LOOP;
 
