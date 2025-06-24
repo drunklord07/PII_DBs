@@ -1,0 +1,82 @@
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS find_phone_numbers_in_db$$
+
+CREATE PROCEDURE find_phone_numbers_in_db()
+BEGIN
+    DECLARE done INT DEFAULT 0;
+    DECLARE tbl VARCHAR(255);
+    DECLARE col VARCHAR(255);
+
+
+    DECLARE cur CURSOR FOR
+        SELECT TABLE_NAME, COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND DATA_TYPE IN ('char', 'varchar', 'text', 'longtext');
+
+    
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+
+    
+    CREATE TEMPORARY TABLE IF NOT EXISTS phone_matches (
+        table_name VARCHAR(255),
+        column_name VARCHAR(255),
+        phone_number VARCHAR(20)
+    );
+
+    TRUNCATE TABLE phone_matches;
+
+    OPEN cur;
+
+    read_loop: LOOP
+        FETCH cur INTO tbl, col;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+
+        
+        SET @sql = CONCAT(
+    'INSERT INTO phone_matches(table_name, column_name, phone_number) ',
+    'SELECT ''', tbl, ''', ''', col, ''', REGEXP_SUBSTR(`', col, '`, ''(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}'') AS phone ',
+    'FROM `', tbl, '` ',
+    'WHERE `', col, '` REGEXP ''(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}'' ',
+    'LIMIT 5;'
+);
+
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END LOOP;
+
+    CLOSE cur;
+
+    
+-- Output the result to MySQL CLI
+SELECT * FROM phone_matches ORDER BY table_name, column_name;
+    -- Export to file
+SET @outfile = '/tmp/phone_numbers.csv';
+
+
+SET @stmt = CONCAT('DROP TABLE IF EXISTS outfile_helper');
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+
+CREATE TABLE outfile_helper AS
+SELECT 'table_name' AS table_name, 'column_name' AS column_name, 'phone_number' AS phone_number
+UNION ALL
+SELECT table_name, column_name, phone_number FROM phone_matches;
+
+
+SELECT * FROM outfile_helper
+INTO OUTFILE @outfile
+FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED BY '"'
+LINES TERMINATED BY '\n';
+
+DROP TABLE outfile_helper;
+
+END$$
+
+DELIMITER ;
