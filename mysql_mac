@@ -1,0 +1,69 @@
+DELIMITER $$
+
+CREATE PROCEDURE find_phone_numbers_in_db()
+BEGIN
+    DECLARE done INT DEFAULT 0;
+    DECLARE tbl VARCHAR(255);
+    DECLARE col VARCHAR(255);
+    DECLARE sql_text TEXT;
+
+    DECLARE v_total_tables INT DEFAULT 0;
+    DECLARE v_successful_checks INT DEFAULT 0;
+    DECLARE v_tables_with_match INT DEFAULT 0;
+    DECLARE v_tables_without_match INT DEFAULT 0;
+    DECLARE v_failed_checks INT DEFAULT 0;
+
+    DECLARE cur CURSOR FOR
+        SELECT TABLE_NAME, COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND DATA_TYPE IN ('char', 'varchar', 'text', 'longtext');
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+
+    OPEN cur;
+
+    read_loop: LOOP
+        FETCH cur INTO tbl, col;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+
+        SET v_total_tables = v_total_tables + 1;
+
+        SET sql_text = CONCAT(
+            'SELECT "', tbl, '" AS table_name, "',
+                         col, '" AS column_name, ',
+                         'REGEXP_SUBSTR(`', col, '`, ''(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}'') AS phone_number ',
+            'FROM `', tbl, '` ',
+            'WHERE `', col, '` REGEXP ''(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}'' ',
+            'LIMIT 5'
+        );
+
+        BEGIN
+            DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+            BEGIN
+                SET v_failed_checks = v_failed_checks + 1;
+            END;
+
+            PREPARE stmt FROM sql_text;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+            SET v_successful_checks = v_successful_checks + 1;
+            SET v_tables_with_match = v_tables_with_match + 1;
+        END;
+    END LOOP;
+
+    CLOSE cur;
+
+    SELECT '========================================' AS SummaryLine;
+    SELECT CONCAT('Total Tables Checked: ', v_total_tables) AS SummaryLine;
+    SELECT CONCAT('Successfully Queried: ', v_successful_checks) AS SummaryLine;
+    SELECT CONCAT('Tables With Possible Matches: ', v_tables_with_match) AS SummaryLine;
+    SELECT CONCAT('Failed Queries: ', v_failed_checks) AS SummaryLine;
+    SELECT '========================================' AS SummaryLine;
+
+END$$
+
+DELIMITER ;
