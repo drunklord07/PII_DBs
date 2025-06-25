@@ -1,3 +1,4 @@
+SET SERVEROUTPUT ON SIZE UNLIMITED
 DECLARE
     TYPE t_failed_table IS RECORD (
         owner       VARCHAR2(128),
@@ -46,16 +47,16 @@ BEGIN
                        CASE
                            WHEN UPPER(COLUMN_NAME) IN ('ADDRESS', 'FULL ADDRESS', 'COMPLETE ADDRESS',
                                                        'RESIDENTIAL ADDRESS', 'PERMANENT ADDRESS',
-                                                       'LOCALITY', 'PINCODE', 'POSTAL CODE',
-                                                       'ZIP', 'ZIP CODE', 'CITY', 'STATE') THEN 'Address'
-                           WHEN UPPER(COLUMN_NAME) IN ('NAME') THEN 'Name'
+                                                       'LOCALITY', 'PINCODE', 'POSTAL CODE','ADDRESS LINE'
+                                                       'ZIP', 'ZIP CODE', 'CITY', 'STATE','ADD') THEN 'Address'
+                           WHEN UPPER(COLUMN_NAME) IN ('NAME','NAM') THEN 'Name'
                            WHEN UPPER(COLUMN_NAME) IN ('DATE OF BIRTH', 'DOB', 'BIRTHDATE', 'BORN ON') THEN 'DOB'
                            WHEN UPPER(COLUMN_NAME) IN ('ACCOUNT NUMBER', 'ACC NUMBER', 'BANK ACCOUNT',
                                                        'ACCOUNT NO', 'A/C NO') THEN 'AccountNumber'
-                           WHEN UPPER(COLUMN_NAME) IN ('CUSTOMER ID', 'CUST ID', 'CUSTOMER NUMBER') THEN 'CustomerID'
+                           WHEN UPPER(COLUMN_NAME) IN ('CUSTOMER ID', 'CUST ID', 'CUSTOMER NUMBER','CUST') THEN 'CustomerID'
                            WHEN UPPER(COLUMN_NAME) IN ('NATIONAL ID', 'IDENTITY CARD', 'PROOF OF IDENTITY',
                                                        'DOCUMENT NUMBER') THEN 'SensitiveHints'
-                           WHEN UPPER(COLUMN_NAME) IN ('INSURANCE NUMBER', 'POLICY NUMBER', 'INSURANCE ID') THEN 'InsurancePolicy'
+                           WHEN UPPER(COLUMN_NAME) IN ('INSURANCE NUMBER', 'POLICY NUMBER', 'INSURANCE ID','INS ID') THEN 'InsurancePolicy'
                            ELSE NULL
                        END AS category
                 FROM ALL_TAB_COLUMNS
