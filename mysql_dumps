@@ -6,25 +6,24 @@ CREATE PROCEDURE export_all_column_data()
 BEGIN
     DECLARE done INT DEFAULT 0;
     DECLARE tbl VARCHAR(255);
-    DECLARE col_count INT;
+    DECLARE col_list TEXT;
+    DECLARE sql_text TEXT;
+    DECLARE row_result TEXT;
 
-    
+    DECLARE result TEXT DEFAULT 'table_name,row_data'; 
+
     DECLARE cur CURSOR FOR
         SELECT TABLE_NAME
         FROM INFORMATION_SCHEMA.TABLES
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_TYPE = 'BASE TABLE';
 
-    
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         SELECT 'An unexpected error occurred during execution.' AS ErrorMessage;
         ROLLBACK;
     END;
-
-    
-    DECLARE result TEXT DEFAULT '';
 
     OPEN cur;
 
@@ -34,26 +33,21 @@ BEGIN
             LEAVE read_loop;
         END IF;
 
-        
-        SELECT GROUP_CONCAT(CONCAT('`', COLUMN_NAME, '`') ORDER BY ORDINAL_POSITION),
-               COUNT(*) INTO @columns, col_count
+        SELECT GROUP_CONCAT(CONCAT('CAST(`', COLUMN_NAME, '` AS CHAR)') ORDER BY ORDINAL_POSITION)
+        INTO col_list
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_NAME = tbl
           AND DATA_TYPE NOT IN ('blob', 'longblob', 'mediumblob', 'tinyblob');
 
-        IF @columns IS NOT NULL THEN
-            -- Build dynamic SQL to flatten each row
-            SET @sql = CONCAT("
-                SELECT GROUP_CONCAT(
-                    CONCAT_WS(',', '", tbl, "', ", REPLACE(@columns, ',', ',
-                    CAST(`', '', ' AS CHAR), CAST(`', '', ' AS CHAR)'), ",
-                    ',\'Table columns\',', col_count
-                    ")
-                    SEPARATOR '\\n'
-                ) INTO @match_result
-                FROM `", tbl, "` LIMIT 5;
-            ");
+        IF col_list IS NOT NULL THEN
+            SET @row_result = NULL;
+
+            SET sql_text = CONCAT(
+                'SELECT GROUP_CONCAT(CONCAT(''', tbl, ''','','', ',
+                'CONCAT_WS('','', ', col_list, ')) SEPARATOR ''\n'') ',
+                'FROM `', tbl, '` LIMIT 5'
+            );
 
             BEGIN
                 DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
@@ -61,21 +55,19 @@ BEGIN
                     ITERATE read_loop;
                 END;
 
-                PREPARE stmt FROM @sql;
-                EXECUTE stmt;
+                PREPARE stmt FROM sql_text;
+                EXECUTE stmt INTO @row_result;
                 DEALLOCATE PREPARE stmt;
 
-                IF @match_result IS NOT NULL THEN
-                    SET result = CONCAT(result, '\n', @match_result);
+                IF @row_result IS NOT NULL AND @row_result != '' THEN
+                    SET result = CONCAT(result, '\n', @row_result);
                 END IF;
             END;
         END IF;
-
     END LOOP;
 
     CLOSE cur;
 
-    
     SELECT REPLACE(result, '\n', '\r\n') AS CSV_Output;
 
 END$$
