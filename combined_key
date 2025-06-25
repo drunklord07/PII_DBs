@@ -45,39 +45,53 @@ BEGIN
             FOR c IN (
                 SELECT COLUMN_NAME,
                        CASE
-                           WHEN UPPER(COLUMN_NAME) IN ('ADDRESS', 'FULL ADDRESS', 'COMPLETE ADDRESS',
-                                                       'RESIDENTIAL ADDRESS', 'PERMANENT ADDRESS',
-                                                       'LOCALITY', 'PINCODE', 'POSTAL CODE','ADDRESS LINE'
-                                                       'ZIP', 'ZIP CODE', 'CITY', 'STATE','ADD') THEN 'Address'
-                           WHEN UPPER(COLUMN_NAME) IN ('NAME','NAM') THEN 'Name'
-                           WHEN UPPER(COLUMN_NAME) IN ('DATE OF BIRTH', 'DOB', 'BIRTHDATE', 'BORN ON') THEN 'DOB'
-                           WHEN UPPER(COLUMN_NAME) IN ('ACCOUNT NUMBER', 'ACC NUMBER', 'BANK ACCOUNT',
-                                                       'ACCOUNT NO', 'A/C NO') THEN 'AccountNumber'
-                           WHEN UPPER(COLUMN_NAME) IN ('CUSTOMER ID', 'CUST ID', 'CUSTOMER NUMBER','CUST') THEN 'CustomerID'
-                           WHEN UPPER(COLUMN_NAME) IN ('NATIONAL ID', 'IDENTITY CARD', 'PROOF OF IDENTITY',
-                                                       'DOCUMENT NUMBER') THEN 'SensitiveHints'
-                           WHEN UPPER(COLUMN_NAME) IN ('INSURANCE NUMBER', 'POLICY NUMBER', 'INSURANCE ID','INS ID') THEN 'InsurancePolicy'
+                           WHEN UPPER(COLUMN_NAME) IN (
+                                'ADDRESS', 'FULL ADDRESS', 'COMPLETE ADDRESS',
+                                'RESIDENTIAL ADDRESS', 'PERMANENT ADDRESS',
+                                'LOCALITY', 'PINCODE', 'POSTAL CODE',
+                                'ADDRESS LINE', 'ZIP', 'ZIP CODE', 'CITY', 'STATE', 'ADD'
+                           ) THEN 'Address'
+                           WHEN UPPER(COLUMN_NAME) IN ('NAME', 'NAM') THEN 'Name'
+                           WHEN UPPER(COLUMN_NAME) IN (
+                                'DATE OF BIRTH', 'DOB', 'BIRTHDATE', 'BORN ON'
+                           ) THEN 'DOB'
+                           WHEN UPPER(COLUMN_NAME) IN (
+                                'ACCOUNT NUMBER', 'ACC NUMBER', 'BANK ACCOUNT',
+                                'ACCOUNT NO', 'A/C NO'
+                           ) THEN 'AccountNumber'
+                           WHEN UPPER(COLUMN_NAME) IN (
+                                'CUSTOMER ID', 'CUST ID', 'CUSTOMER NUMBER', 'CUST'
+                           ) THEN 'CustomerID'
+                           WHEN UPPER(COLUMN_NAME) IN (
+                                'NATIONAL ID', 'IDENTITY CARD', 'PROOF OF IDENTITY',
+                                'DOCUMENT NUMBER'
+                           ) THEN 'SensitiveHints'
+                           WHEN UPPER(COLUMN_NAME) IN (
+                                'INSURANCE NUMBER', 'POLICY NUMBER', 'INSURANCE ID', 'INS ID'
+                           ) THEN 'InsurancePolicy'
                            ELSE NULL
                        END AS category
                 FROM ALL_TAB_COLUMNS
-                WHERE OWNER = v_owner AND TABLE_NAME = v_table
+                WHERE OWNER = v_owner
+                  AND TABLE_NAME = v_table
                   AND UPPER(COLUMN_NAME) IN (
                       'ADDRESS', 'FULL ADDRESS', 'COMPLETE ADDRESS',
                       'RESIDENTIAL ADDRESS', 'PERMANENT ADDRESS',
-                      'LOCALITY', 'PINCODE', 'POSTAL CODE',
-                      'ZIP', 'ZIP CODE', 'CITY', 'STATE',
-                      'NAME',
+                      'LOCALITY', 'PINCODE', 'POSTAL CODE', 'ADDRESS LINE',
+                      'ZIP', 'ZIP CODE', 'CITY', 'STATE', 'ADD',
+                      'NAME', 'NAM',
                       'DATE OF BIRTH', 'DOB', 'BIRTHDATE', 'BORN ON',
                       'ACCOUNT NUMBER', 'ACC NUMBER', 'BANK ACCOUNT', 'ACCOUNT NO', 'A/C NO',
-                      'CUSTOMER ID', 'CUST ID', 'CUSTOMER NUMBER',
+                      'CUSTOMER ID', 'CUST ID', 'CUSTOMER NUMBER', 'CUST',
                       'NATIONAL ID', 'IDENTITY CARD', 'PROOF OF IDENTITY', 'DOCUMENT NUMBER',
-                      'INSURANCE NUMBER', 'POLICY NUMBER', 'INSURANCE ID'
+                      'INSURANCE NUMBER', 'POLICY NUMBER', 'INSURANCE ID', 'INS ID'
                   )
             ) LOOP
                 v_column := c.COLUMN_NAME;
 
                 BEGIN
-                    v_sql := 'SELECT TO_CHAR("' || v_column || '") FROM "' || v_owner || '"."' || v_table || '" WHERE ROWNUM <= 2';
+                    v_sql := 'SELECT TO_CHAR("' || v_column || '") FROM "'
+                             || v_owner || '"."' || v_table || '" WHERE ROWNUM <= 2';
 
                     v_cur := DBMS_SQL.OPEN_CURSOR;
                     DBMS_SQL.PARSE(v_cur, v_sql, DBMS_SQL.NATIVE);
@@ -86,7 +100,10 @@ BEGIN
 
                     WHILE DBMS_SQL.FETCH_ROWS(v_cur) > 0 LOOP
                         DBMS_SQL.COLUMN_VALUE(v_cur, 1, v_value);
-                        DBMS_OUTPUT.PUT_LINE(v_owner || ',' || v_table || ',' || v_column || ',' || SUBSTR(v_value, 1, 3900) || ',' || c.category);
+                        DBMS_OUTPUT.PUT_LINE(
+                            v_owner || ',' || v_table || ',' || v_column || ','
+                            || SUBSTR(v_value, 1, 3900) || ',' || c.category
+                        );
                         v_match_found := TRUE;
                     END LOOP;
 
