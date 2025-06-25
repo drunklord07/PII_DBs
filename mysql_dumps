@@ -12,6 +12,7 @@ BEGIN
 
     DECLARE result TEXT DEFAULT 'table_name,row_data'; 
 
+
     DECLARE cur CURSOR FOR
         SELECT TABLE_NAME
         FROM INFORMATION_SCHEMA.TABLES
@@ -64,7 +65,7 @@ BEGIN
                 END IF;
             END;
         END IF;
-    END LOOP;
+    END LOOP read_loop;
 
     CLOSE cur;
 
