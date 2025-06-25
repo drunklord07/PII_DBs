@@ -10,9 +10,9 @@ BEGIN
     DECLARE sql_text TEXT;
     DECLARE row_result TEXT;
 
-    DECLARE result TEXT DEFAULT 'table_name,row_data'; 
+    DECLARE result TEXT DEFAULT 'table_name,row_data';  -- CSV Header
 
-
+    -- Cursor for all base tables
     DECLARE cur CURSOR FOR
         SELECT TABLE_NAME
         FROM INFORMATION_SCHEMA.TABLES
@@ -34,6 +34,7 @@ BEGIN
             LEAVE read_loop;
         END IF;
 
+        -- Get non-BLOB column list
         SELECT GROUP_CONCAT(CONCAT('CAST(`', COLUMN_NAME, '` AS CHAR)') ORDER BY ORDINAL_POSITION)
         INTO col_list
         FROM INFORMATION_SCHEMA.COLUMNS
@@ -50,22 +51,24 @@ BEGIN
                 'FROM `', tbl, '` LIMIT 5'
             );
 
+            -- This block tries to run the SQL and skip errors silently
             BEGIN
                 DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
                 BEGIN
-                    ITERATE read_loop;
+                    SET v_failed_checks = v_failed_checks + 1;
+                    SET @row_result = NULL;
                 END;
 
                 PREPARE stmt FROM sql_text;
                 EXECUTE stmt INTO @row_result;
                 DEALLOCATE PREPARE stmt;
-
-                IF @row_result IS NOT NULL AND @row_result != '' THEN
-                    SET result = CONCAT(result, '\n', @row_result);
-                END IF;
             END;
+
+            IF @row_result IS NOT NULL AND @row_result != '' THEN
+                SET result = CONCAT(result, '\n', @row_result);
+            END IF;
         END IF;
-    END LOOP read_loop;
+    END LOOP;
 
     CLOSE cur;
 
