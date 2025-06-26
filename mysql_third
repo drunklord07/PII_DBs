@@ -1,0 +1,72 @@
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS extract_indian_mobiles$$
+
+CREATE PROCEDURE extract_indian_mobiles()
+BEGIN
+   
+    DECLARE result TEXT DEFAULT 'table_name,column_name,clean_number\r\n';
+    
+   
+    SELECT CONCAT(result, 
+        IFNULL(
+            (SELECT GROUP_CONCAT(
+                CONCAT('"customers","phone","', 
+                REGEXP_REPLACE(phone, '[^0-9]', ''), '"')
+                SEPARATOR '\r\n'
+            )
+            FROM customers
+            WHERE phone REGEXP '[0-9]{10}'),
+            ''
+        ), '\r\n'
+    ) INTO result;
+    
+   
+    SELECT CONCAT(result, 
+        IFNULL(
+            (SELECT GROUP_CONCAT(
+                CONCAT('"employees","contact_info","', 
+                REGEXP_REPLACE(JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.phone')), '[^0-9]', ''), '"')
+                SEPARATOR '\r\n'
+            )
+            FROM employees
+            WHERE JSON_EXTRACT(contact_info, '$.phone') REGEXP '[0-9]{10}'),
+            ''
+        ), '\r\n'
+    ) INTO result;
+    
+    
+    SELECT CONCAT(result, 
+        IFNULL(
+            (SELECT GROUP_CONCAT(
+                CONCAT('"employees","contact_info","', 
+                REGEXP_REPLACE(JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.mobile')), '[^0-9]', ''), '"')
+                SEPARATOR '\r\n'
+            )
+            FROM employees
+            WHERE JSON_EXTRACT(contact_info, '$.mobile') REGEXP '[0-9]{10}'),
+            ''
+        ), '\r\n'
+    ) INTO result;
+    
+    
+    SELECT CONCAT(result, 
+        IFNULL(
+            (SELECT GROUP_CONCAT(
+                CONCAT('"orders","shipping_address","', 
+                REGEXP_REPLACE(
+                    REGEXP_SUBSTR(shipping_address, '[0-9]{10}'),
+                    '[^0-9]', ''), '"')
+                SEPARATOR '\r\n'
+            )
+            FROM orders
+            WHERE shipping_address REGEXP '[0-9]{10}'),
+            ''
+        ), '\r\n'
+    ) INTO result;
+    
+    
+    SELECT result AS CSV_Output;
+END$$
+
+DELIMITER ;
