@@ -1,0 +1,103 @@
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS find_phone_numbers_in_db$$
+
+CREATE PROCEDURE find_phone_numbers_in_db()
+BEGIN
+   
+    DECLARE done INT DEFAULT 0;
+    DECLARE tbl VARCHAR(255);
+    DECLARE col VARCHAR(255);
+
+    DECLARE v_total_tables INT DEFAULT 0;
+    DECLARE v_successful_checks INT DEFAULT 0;
+    DECLARE v_tables_with_match INT DEFAULT 0;
+    DECLARE v_tables_without_match INT DEFAULT 0;
+    DECLARE v_failed_checks INT DEFAULT 0;
+
+    
+    DECLARE cur CURSOR FOR
+        SELECT TABLE_NAME, COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND DATA_TYPE IN ('char', 'varchar', 'text', 'longtext', 'mediumtext');
+
+   
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+
+    
+    DROP TEMPORARY TABLE IF EXISTS temp_results;
+    CREATE TEMPORARY TABLE temp_results (
+        table_name VARCHAR(255),
+        column_name VARCHAR(255),
+        phone_number VARCHAR(20)
+    );
+
+    OPEN cur;
+
+    read_loop: LOOP
+        FETCH cur INTO tbl, col;
+        IF done THEN LEAVE read_loop; END IF;
+
+        SET v_total_tables = v_total_tables + 1;
+
+        BEGIN
+            DECLARE EXIT HANDLER FOR SQLEXCEPTION
+            BEGIN
+                SET v_failed_checks = v_failed_checks + 1;
+            END;
+
+            
+            SET @sql = CONCAT(
+                "INSERT INTO temp_results(table_name, column_name, phone_number) ",
+                "SELECT '", tbl, "', '", col, "', REGEXP_SUBSTR(`", col, "`, '(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}') ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}'"
+            );
+
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+            SET v_successful_checks = v_successful_checks + 1;
+
+            
+            SET @match_count = 0;
+            SELECT COUNT(*) INTO @match_count FROM temp_results WHERE table_name = tbl AND column_name = col;
+
+            IF @match_count > 0 THEN
+                SET v_tables_with_match = v_tables_with_match + 1;
+            ELSE
+                SET v_tables_without_match = v_tables_without_match + 1;
+            END IF;
+        END;
+    END LOOP;
+
+    CLOSE cur;
+
+    
+    SELECT 'table_name,column_name,phone_number' AS CSV_Output
+    UNION ALL
+    SELECT CONCAT_WS('","', table_name, column_name, phone_number) AS CSV_Output
+    FROM temp_results;
+
+    
+    SELECT '========================================' AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Total Tables Scanned: ', v_total_tables) AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Successfully Checked: ', v_successful_checks) AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Tables with Matches: ', v_tables_with_match) AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Tables without Matches: ', v_tables_without_match) AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Failed Checks: ', v_failed_checks) AS SummaryLine
+    UNION ALL
+    SELECT '========================================' AS SummaryLine;
+
+    
+    DROP TEMPORARY TABLE IF EXISTS temp_results;
+END$$
+
+DELIMITER ;
