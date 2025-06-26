@@ -1,0 +1,59 @@
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS extract_indian_mobiles$$
+
+CREATE PROCEDURE extract_indian_mobiles()
+BEGIN
+    -- Declare variables
+    DECLARE result TEXT DEFAULT 'table_name,column_name,clean_number';  -- Updated header
+
+   
+    SELECT CONCAT(result,
+        '\r\n',
+        GROUP_CONCAT(
+            CONCAT('"customers","phone","',
+            REGEXP_REPLACE(phone, '[^0-9]', ''), '"'
+            ) SEPARATOR '\r\n'
+        )
+    ) INTO result
+    FROM customers
+    WHERE phone REGEXP '((\\+91|91|0)[\\- ]*)?([0-9][ ]*){10}';
+
+    
+    SELECT CONCAT(result, '\r\n',
+        GROUP_CONCAT(
+            CONCAT('"employees","contact_info","',
+            REGEXP_REPLACE(JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.phone')), '[^0-9]', ''), '"'
+            ) SEPARATOR '\r\n'
+        )
+    ) INTO result
+    FROM employees
+    WHERE JSON_EXTRACT(contact_info, '$.phone') REGEXP '([0-9][ ]*){10}';
+
+    
+    SELECT CONCAT(result, '\r\n',
+        GROUP_CONCAT(
+            CONCAT('"employees","contact_info","',
+            REGEXP_REPLACE(JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.mobile')), '[^0-9]', ''), '"'
+            ) SEPARATOR '\r\n'
+        )
+    ) INTO result
+    FROM employees
+    WHERE JSON_EXTRACT(contact_info, '$.mobile') REGEXP '([0-9][ ]*){10}';
+
+    
+    SELECT CONCAT(result, '\r\n',
+        GROUP_CONCAT(
+            CONCAT('"orders","shipping_address","',
+            REGEXP_REPLACE(REGEXP_SUBSTR(shipping_address, '((\\+91|91|0)[\\- ]*)?[6-9][0-9]{9}'), '[^0-9]', ''), '"'
+            ) SEPARATOR '\r\n'
+        )
+    ) INTO result
+    FROM orders
+    WHERE shipping_address REGEXP '((\\+91|91|0)[\\- ]*)?[6-9][0-9]{9}';
+
+    
+    SELECT REPLACE(result, '\\r\\n', '\r\n') AS CSV_Output;
+END$$
+
+DELIMITER ;
