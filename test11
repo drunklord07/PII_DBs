@@ -53,7 +53,7 @@ BEGIN
                 "SEPARATOR '\n') INTO @match_result ",
                 "FROM `", tbl, "` ",
                 "WHERE `", col, "` REGEXP '(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}' ",
-                "LIMIT 100"
+                "LIMIT 5"
             );
 
             SET @match_result = NULL;
