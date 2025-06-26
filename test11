@@ -1,0 +1,95 @@
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS find_phone_numbers_in_db$$
+
+CREATE PROCEDURE find_phone_numbers_in_db()
+BEGIN
+    DECLARE done INT DEFAULT 0;
+    DECLARE tbl VARCHAR(255);
+    DECLARE col VARCHAR(255);
+
+    
+    DECLARE v_total_tables INT DEFAULT 0;
+    DECLARE v_successful_checks INT DEFAULT 0;
+    DECLARE v_tables_with_match INT DEFAULT 0;
+    DECLARE v_tables_without_match INT DEFAULT 0;
+    DECLARE v_failed_checks INT DEFAULT 0;
+
+   
+    DECLARE result TEXT DEFAULT 'table_name,column_name,phone_number';  -- CSV header
+
+    
+    DECLARE cur CURSOR FOR
+        SELECT TABLE_NAME, COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND DATA_TYPE IN ('char', 'varchar', 'text', 'longtext');
+
+   
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        SELECT 'An unexpected error occurred during execution.' AS ErrorMessage;
+    END;
+
+    OPEN cur;
+
+    read_loop: LOOP
+        FETCH cur INTO tbl, col;
+        IF done THEN LEAVE read_loop; END IF;
+
+        SET v_total_tables = v_total_tables + 1;
+
+        
+        SET @sql = CONCAT(
+            "SELECT GROUP_CONCAT(CONCAT_WS(',', '\"", tbl, "','", col, "','", 
+            "REGEXP_SUBSTR(`", col, "`, '(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}')) ", 
+            "SEPARATOR '\\n') INTO @match_result ",
+            "FROM `", tbl, "` ",
+            "WHERE `", col, "` REGEXP '(^|[^0-9])(\\\\+91\\\\-?|91|0)?[6-9][0-9]{9}' ",
+            "LIMIT 1"
+        );
+
+        BEGIN
+            DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+            BEGIN
+                SET v_failed_checks = v_failed_checks + 1;
+            END;
+
+            SET @match_result = NULL;
+
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt INTO @match_result;
+            DEALLOCATE PREPARE stmt;
+
+            SET v_successful_checks = v_successful_checks + 1;
+
+            IF @match_result IS NOT NULL AND @match_result != '' THEN
+                SET v_tables_with_match = v_tables_with_match + 1;
+                SET result = CONCAT(result, '\n', @match_result);
+            ELSE
+                SET v_tables_without_match = v_tables_without_match + 1;
+            END IF;
+        END;
+
+    END LOOP;
+
+    CLOSE cur;
+
+    
+    SELECT REPLACE(result, '\n', '\r\n') AS CSV_Output;
+
+    
+    SELECT '========================================' AS SummaryLine;
+    SELECT CONCAT('Total Tables Scanned: ', v_total_tables) AS SummaryLine;
+    SELECT CONCAT('Successfully Checked: ', v_successful_checks) AS SummaryLine;
+    SELECT CONCAT('Tables with Matches: ', v_tables_with_match) AS SummaryLine;
+    SELECT CONCAT('Tables without Matches: ', v_tables_without_match) AS SummaryLine;
+    SELECT CONCAT('Failed Checks: ', v_failed_checks) AS SummaryLine;
+    SELECT '========================================' AS SummaryLine;
+
+END$$
+
+DELIMITER ;
+
+CALL  find_phone_numbers_in_db();
