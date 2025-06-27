@@ -1,1 +1,286 @@
-a
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS find_sensitive_data_in_db$$
+
+CREATE PROCEDURE find_sensitive_data_in_db()
+BEGIN
+    DECLARE done INT DEFAULT 0;
+    DECLARE tbl VARCHAR(255);
+    DECLARE col VARCHAR(255);
+    
+    DECLARE v_actual_tables INT DEFAULT 0;
+    DECLARE v_total_columns INT DEFAULT 0;
+    DECLARE v_tables_with_match INT DEFAULT 0;
+    DECLARE v_failed_checks INT DEFAULT 0;
+    
+    DECLARE result TEXT DEFAULT 'table_name,column_name,matched_value,pattern_type';
+    DECLARE tables_with_matches TEXT DEFAULT '';
+    
+    DECLARE cur CURSOR FOR
+        SELECT TABLE_NAME, COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND DATA_TYPE IN ('char', 'varchar', 'text', 'longtext', 'mediumtext', 'tinytext');
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+
+    SELECT COUNT(DISTINCT TABLE_NAME) INTO v_actual_tables
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE();
+
+    OPEN cur;
+
+    read_loop: LOOP
+        FETCH cur INTO tbl, col;
+        IF done THEN LEAVE read_loop; END IF;
+        
+        SET v_total_columns = v_total_columns + 1;
+
+        BEGIN
+            DECLARE CONTINUE HANDLER FOR SQLEXCEPTION 
+            BEGIN
+                SET v_failed_checks = v_failed_checks + 1;
+            END;
+
+           
+            SET @dl_result = NULL;
+            SET @gstin_result = NULL;
+            SET @ip_result = NULL;
+            SET @mac_result = NULL;
+            SET @coord_result = NULL;
+            SET @email_result = NULL;
+            SET @mobile_result = NULL;
+            SET @pan_result = NULL;
+            SET @upi_result = NULL;
+            SET @voterid_result = NULL;
+            SET @card_result = NULL;
+
+            
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '[A-Z]{2}[0-9]{2}[\\\\-\\\\s]?[0-9]{4}[0-9]{7}'), ",
+                "'\",\"DL_REGEX\"') SEPARATOR '\n') INTO @dl_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '[A-Z]{2}[0-9]{2}[\\\\-\\\\s]?[0-9]{4}[0-9]{7}' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+           
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]'), ",
+                "'\",\"GSTIN_REGEX\"') SEPARATOR '\n') INTO @gstin_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+           
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '([0-9]{1,3}\\\\.){3}[0-9]{1,3}'), ",
+                "'\",\"IP_REGEX\"') SEPARATOR '\n') INTO @ip_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '([0-9]{1,3}\\\\.){3}[0-9]{1,3}' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+           
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})'), ",
+                "'\",\"MAC_REGEX\"') SEPARATOR '\n') INTO @mac_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+       
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '-?[0-9]{1,3}\\\\.[0-9]+,\\\\s*-?[0-9]{1,3}\\\\.[0-9]+'), ",
+                "'\",\"COORD_REGEX\"') SEPARATOR '\n') INTO @coord_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '-?[0-9]{1,3}\\\\.[0-9]+,\\\\s*-?[0-9]{1,3}\\\\.[0-9]+' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+           
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}'), ",
+                "'\",\"EMAIL_REGEX\"') SEPARATOR '\n') INTO @email_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+           
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '(\\\\+91|91|0)?[6-9][0-9]{9}'), ",
+                "'\",\"MOBILE_REGEX\"') SEPARATOR '\n') INTO @mobile_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '(\\\\+91|91|0)?[6-9][0-9]{9}' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+           
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '[A-Z]{5}[0-9]{4}[A-Z]'), ",
+                "'\",\"PAN_REGEX\"') SEPARATOR '\n') INTO @pan_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '[A-Z]{5}[0-9]{4}[A-Z]' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+           
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '[A-Za-z0-9.\\\\-_]{2,256}@[A-Za-z]{2,64}'), ",
+                "'\",\"UPI_REGEX\"') SEPARATOR '\n') INTO @upi_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '[A-Za-z0-9.\\\\-_]{2,256}@[A-Za-z]{2,64}' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+            
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '[A-Z]{3}[0-9]{7}'), ",
+                "'\",\"VOTERID_REGEX\"') SEPARATOR '\n') INTO @voterid_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '[A-Z]{3}[0-9]{7}' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+           
+            SET @sql = CONCAT(
+                "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                "REGEXP_SUBSTR(`", col, "`, '4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|2(?:2[2-9][0-9]{12}|[3-6][0-9]{13}|7(?:[01][0-9]{12}|20[0-9]{12}))|3[47][0-9]{13}|60[0-9]{14}|65[0-9]{14}|81[0-9]{14}|508[0-9][0-9]{12}'), ",
+                "'\",\"CARD_REGEX\"') SEPARATOR '\n') INTO @card_result ",
+                "FROM `", tbl, "` ",
+                "WHERE `", col, "` REGEXP '4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|2(?:2[2-9][0-9]{12}|[3-6][0-9]{13}|7(?:[01][0-9]{12}|20[0-9]{12}))|3[47][0-9]{13}|60[0-9]{14}|65[0-9]{14}|81[0-9]{14}|508[0-9][0-9]{12}' ",
+                "AND `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 2"
+            );
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+            
+            IF @dl_result IS NOT NULL AND @dl_result != '' THEN
+                SET result = CONCAT(result, '\n', @dl_result);
+            END IF;
+            
+            IF @gstin_result IS NOT NULL AND @gstin_result != '' THEN
+                SET result = CONCAT(result, '\n', @gstin_result);
+            END IF;
+            
+            IF @ip_result IS NOT NULL AND @ip_result != '' THEN
+                SET result = CONCAT(result, '\n', @ip_result);
+            END IF;
+            
+            IF @mac_result IS NOT NULL AND @mac_result != '' THEN
+                SET result = CONCAT(result, '\n', @mac_result);
+            END IF;
+            
+            IF @coord_result IS NOT NULL AND @coord_result != '' THEN
+                SET result = CONCAT(result, '\n', @coord_result);
+            END IF;
+            
+            IF @email_result IS NOT NULL AND @email_result != '' THEN
+                SET result = CONCAT(result, '\n', @email_result);
+            END IF;
+            
+            IF @mobile_result IS NOT NULL AND @mobile_result != '' THEN
+                SET result = CONCAT(result, '\n', @mobile_result);
+            END IF;
+            
+            IF @pan_result IS NOT NULL AND @pan_result != '' THEN
+                SET result = CONCAT(result, '\n', @pan_result);
+            END IF;
+            
+            IF @upi_result IS NOT NULL AND @upi_result != '' THEN
+                SET result = CONCAT(result, '\n', @upi_result);
+            END IF;
+            
+            IF @voterid_result IS NOT NULL AND @voterid_result != '' THEN
+                SET result = CONCAT(result, '\n', @voterid_result);
+            END IF;
+            
+            IF @card_result IS NOT NULL AND @card_result != '' THEN
+                SET result = CONCAT(result, '\n', @card_result);
+            END IF;
+
+            -- Track tables with matches
+            IF (@dl_result IS NOT NULL OR @gstin_result IS NOT NULL OR 
+                @ip_result IS NOT NULL OR @mac_result IS NOT NULL OR
+                @coord_result IS NOT NULL OR @email_result IS NOT NULL OR
+                @mobile_result IS NOT NULL OR @pan_result IS NOT NULL OR
+                @upi_result IS NOT NULL OR @voterid_result IS NOT NULL OR
+                @card_result IS NOT NULL) THEN
+                
+                IF LOCATE(CONCAT(',', tbl, ','), CONCAT(',', tables_with_matches, ',')) = 0 THEN
+                    SET v_tables_with_match = v_tables_with_match + 1;
+                    SET tables_with_matches = CONCAT(tables_with_matches, ',', tbl);
+                END IF;
+            END IF;
+        END;
+    END LOOP;
+
+    CLOSE cur;
+
+    
+    IF LENGTH(result) > LENGTH('table_name,column_name,matched_value,pattern_type') THEN
+        SELECT REPLACE(result, '\n', '\r\n') AS CSV_Output;
+    ELSE
+        SELECT CONCAT('No sensitive data found. Scanned ', v_total_columns, 
+                     ' columns across ', v_actual_tables, ' tables.') AS CSV_Output;
+    END IF;
+
+   
+    SELECT '========================================' AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Actual Tables in Database: ', v_actual_tables) AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Columns Scanned: ', v_total_columns) AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Tables with Sensitive Data: ', v_tables_with_match) AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Failed Column Scans: ', v_failed_checks) AS SummaryLine
+    UNION ALL
+    SELECT '========================================' AS SummaryLine;
+END$$
+
+DELIMITER ;
