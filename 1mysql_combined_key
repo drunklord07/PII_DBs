@@ -1,1 +1,146 @@
-a
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS find_sensitive_data_in_db$$
+
+CREATE PROCEDURE find_sensitive_data_in_db()
+BEGIN
+    
+    DECLARE done INT DEFAULT 0;
+    DECLARE tbl VARCHAR(255);
+    DECLARE col VARCHAR(255);
+    DECLARE col_lower VARCHAR(255);
+
+   
+    DECLARE v_actual_tables INT DEFAULT 0;
+    DECLARE v_total_columns INT DEFAULT 0;
+    DECLARE v_tables_with_match INT DEFAULT 0;
+    DECLARE v_failed_checks INT DEFAULT 0;
+
+    
+    DECLARE result TEXT DEFAULT 'table_name,column_name,matched_value,pattern_type';
+    DECLARE tables_with_matches TEXT DEFAULT '';
+
+   
+    DECLARE cur CURSOR FOR
+        SELECT TABLE_NAME, COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND DATA_TYPE IN ('char', 'varchar', 'text', 'longtext');
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+
+   
+    SELECT COUNT(DISTINCT TABLE_NAME) INTO v_actual_tables
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE();
+
+    OPEN cur;
+
+    read_loop: LOOP
+        FETCH cur INTO tbl, col;
+        IF done THEN LEAVE read_loop; END IF;
+
+        SET v_total_columns = v_total_columns + 1;
+        SET col_lower = LOWER(col); -- normalize column name
+
+        BEGIN
+            DECLARE pattern_types TEXT DEFAULT NULL;
+            DECLARE value_result TEXT DEFAULT NULL;
+
+           
+            SET pattern_types = NULL;
+            SET value_result = NULL;
+
+            
+            SET pattern_types = CASE 
+                WHEN col_lower REGEXP 'address|full address|complete address|residential address|permanent address|locality|pincode|postal code|zip|zip code|city|state' THEN 'Address'
+                ELSE NULL
+            END;
+
+            IF col_lower REGEXP 'name' THEN
+                SET pattern_types = IF(pattern_types IS NULL, 'Name', CONCAT(pattern_types, ',Name'));
+            END IF;
+
+            IF col_lower REGEXP 'date of birth|dob|birthdate|born on' THEN
+                SET pattern_types = IF(pattern_types IS NULL, 'DOB', CONCAT(pattern_types, ',DOB'));
+            END IF;
+
+            IF col_lower REGEXP 'account number|acc number|bank account|account no|a/c no' THEN
+                SET pattern_types = IF(pattern_types IS NULL, 'AccountNumber', CONCAT(pattern_types, ',AccountNumber'));
+            END IF;
+
+            IF col_lower REGEXP 'customer id|cust id|customer number' THEN
+                SET pattern_types = IF(pattern_types IS NULL, 'CustomerID', CONCAT(pattern_types, ',CustomerID'));
+            END IF;
+
+            IF col_lower REGEXP 'national id|identity card|proof of identity|document number' THEN
+                SET pattern_types = IF(pattern_types IS NULL, 'SensitiveHints', CONCAT(pattern_types, ',SensitiveHints'));
+            END IF;
+
+            IF col_lower REGEXP 'insurance number|policy number|insurance id' THEN
+                SET pattern_types = IF(pattern_types IS NULL, 'InsurancePolicy', CONCAT(pattern_types, ',InsurancePolicy'));
+            END IF;
+
+            IF pattern_types IS NULL THEN
+                ITERATE read_loop; -- Skip if no match
+            END IF;
+
+            
+            BEGIN
+                DECLARE EXIT HANDLER FOR SQLEXCEPTION
+                    SET v_failed_checks = v_failed_checks + 1;
+
+                SET @sql = CONCAT(
+                    "SELECT GROUP_CONCAT(DISTINCT CONCAT('\"", tbl, "\",\"", col, "\",\"', ",
+                    "REPLACE(`", col, "`, '\"', '\"\"'), '\",\"", pattern_types, "\"') SEPARATOR '\n') ",
+                    "INTO @value_result FROM `", tbl, "` ",
+                    "WHERE `", col, "` IS NOT NULL AND `", col, "` != '' LIMIT 100"
+                );
+
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+
+                SET value_result = @value_result;
+            END;
+
+           
+            IF value_result IS NOT NULL AND value_result != '' THEN
+                SET result = CONCAT(result, '\n', value_result);
+
+                
+                IF LOCATE(CONCAT(',', tbl, ','), CONCAT(',', tables_with_matches, ',')) = 0 THEN
+                    SET v_tables_with_match = v_tables_with_match + 1;
+                    SET tables_with_matches = CONCAT(tables_with_matches, ',', tbl);
+                END IF;
+            END IF;
+
+        END;
+    END LOOP;
+
+    CLOSE cur;
+
+    
+    IF LENGTH(result) > LENGTH('table_name,column_name,matched_value,pattern_type') THEN
+        SELECT REPLACE(result, '\n', '\r\n') AS CSV_Output;
+    ELSE
+        SELECT CONCAT('No sensitive data found. Scanned ', v_total_columns,
+                     ' columns across ', v_actual_tables, ' tables.') AS CSV_Output;
+    END IF;
+
+    
+    SELECT '========================================' AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Actual Tables in Database: ', v_actual_tables) AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Columns Scanned: ', v_total_columns) AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Tables with Sensitive Data: ', v_tables_with_match) AS SummaryLine
+    UNION ALL
+    SELECT CONCAT('Failed Column Scans: ', v_failed_checks) AS SummaryLine
+    UNION ALL
+    SELECT '========================================' AS SummaryLine;
+
+END$$
+
+DELIMITER ;
